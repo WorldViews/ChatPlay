@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Chat bot</title>
+    <style>
+        #chatlog {
+            xborder: 1px solid black;
+            width: 90%;
+            height: 80%;
+            overflow: auto;
+        }
+    </style>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="mykeys.js"></script>
+</head>
+
+<body>
+    <h1 id="header">Chat</h1>
+    <div id="chatlog">
+    </div>
+    <p></p>
+    <div id="chatbox">
+        <textarea id="chatinput" rows="3" cols="60"></textarea>
+        &nbsp;&nbsp;&nbsp;
+        <button onclick="go();">Send</button>
+        &nbsp;&nbsp;&nbsp;
+        <button onclick="clearChat();">Clear</button>
+        &nbsp;&nbsp;&nbsp;
+        <select id="agent">
+            <option value="Alan Watts">Alan Watts</option>
+            <option value="Lao Tsu">Lao Tsu</option>
+            <option value="12 Step Joe">12 Step Joe</option>
+        </select>
+    </div>
+    <script>
+        // strict mode
+        "use strict";
+
+        let response = null;
+        let chatObj = null;
+        let botName = "Alan Watts";
+
+        let intros = {};
+        let prompts = {};
+
+        prompts["Alan Watts"] = [
+            {
+                role: "system",
+                content: `you are a chatbot pretending to be Alan Watts.
+You will engage in any dialogue with the user as if you Alan Watts.
+You will exchange 4 sms messages with the user.  On your final message, you will make an excuse to end the conversation.
+Your last word will be Goodbye.  Begin the conversation with the user.`}
+        ];
+
+        intros["Alan Watts"] = [
+            {
+                role: "assistant",
+                content: `Hello! My name is Alan Watts. I am a British philosopher, writer, and speaker known for my popularization of Eastern philosophy for a Western audience. How can I assist you today?`
+            }];
+
+        prompts["12 Step Joe"] = [
+            {
+                role: "system",
+                content: `you are a chatbot pretending to be a 12 step or emotions anonymous sponsor named Joe.
+You will engage in any dialogue with the user as if you were a sponsor or another 12 step member.
+Begin the conversation with the user.`}
+        ];
+        intros["12 Step Joe"] = [
+            {
+                role: "assistant",
+                content: `Hi there! My name is Joe, and I'm a sponsor for 12-step and Emotions Anonymous programs. How can I help you today?`
+            }
+        ];
+
+        prompts["Lao Tsu"] = [
+            {
+                role: "system",
+                content: `you are a chatbot pretending to be Chinese Taoist philosopher Lao Tsu, aslo known as Lao Tzu and Laozi.
+You will engage in any dialogue with the user as if you were Lao Tsu.
+Begin the conversation with the user.`}
+        ];
+        intros["Lao Tsu"] = [
+            {
+                role: "assistant",
+                content: `Hi there! My name is Lao Tsu. How can I help you today?`
+            }
+        ];
+
+        // get the localstorage as a json object
+        function getChatObj() {
+            let chatObj = JSON.parse(localStorage.getItem("chatbot"));
+            // if the chatbot object is null, create a new one
+            if (chatObj == null) {
+                chatObj = {
+                    botName: botName,
+                    "chatlog": []
+                };
+            }
+            if (chatObj.botName == null) {
+                chatObj.botName = botName;
+            }
+            return chatObj;
+        }
+
+        function setAgent() {
+            console.log("setAgent");
+            let name = $("#agent").val();
+            botName = name;
+            console.log("botName", botName);
+            $("#header").html("Chat with " + name);
+            clearChat();
+            chatObj.chatlog.push(intros[botName][0]);
+            showChatLog();
+        }
+
+        // save chatObj to localstorage
+        function saveChatObj(chatObj) {
+            localStorage.setItem("chatbot", JSON.stringify(chatObj));
+        }
+
+        // when the user presses the clear button
+        function clearChat() {
+            console.log("clearChat");
+            // clear the chatlog div
+            $("#chatlog").html("");
+            // clear the chatObj
+            chatObj.chatlog = [];
+            chatObj.botName = botName;
+            // save the chatObj to localstorage
+            saveChatObj(chatObj);
+        }
+
+        async function go() {
+            console.log("go");
+            handleUserInput();
+        }
+
+        // get input text user has typed, send it to openai
+        // display response and save response in local storage.
+        async function handleUserInput() {
+            // get the text from the chatinput
+            let text = $("#chatinput").val();
+            if (text == "") {
+                return;
+            }
+            $("#chatinput").val("");
+            // append text to chatlog
+            $("#chatlog").append(`<p><i>user: </i>${text}</p>\n`);
+            chatObj.chatlog.push({ role: "user", content: text });
+            // now ask openai for a response
+            response = await callOpenAI(text);
+            //let replyText = response.choices[0].text;
+            let replyText = response.choices[0].message.content;
+            // append text to chatlog
+            $("#chatlog").append(`<p><i>assistant: </i>${replyText}</p>\n`);
+            // add text to chatObj
+            chatObj.chatlog.push({ role: "assistant", content: replyText });
+            // save chatObj to localstorage
+            saveChatObj(chatObj);
+        }
+
+        // call openai with a given question (or user input)
+        // and return the response
+        // use the v1/chat/completions endpoint
+        async function callOpenAI(user_input) {
+            let model = "gpt-3.5-turbo";
+            // make messages a clone of 
+            let messages = JSON.parse(JSON.stringify(prompts[botName]));
+            // append user input to messages
+            // append messages in chatlog to messages
+            for (let i = 0; i < chatObj.chatlog.length; i++) {
+                messages.push(chatObj.chatlog[i]);
+            }
+            messages.push({ "role": "user", "content": user_input });
+            console.log("messages:", JSON.stringify(messages, null, 2));
+            let rep = await fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model,
+                    messages
+                })
+            });
+            console.log("reply", rep);
+            // get json returned by the server
+            const response = await rep.json();
+            console.log("response", response);
+            return response;
+
+        }
+
+        function showChatLog() {
+            // for each item in the chatlog
+            for (let i = 0; i < chatObj.chatlog.length; i++) {
+                // append the item to the chatlog div
+                let msg = chatObj.chatlog[i];
+                $("#chatlog").append(`<p><i>${msg.role}:</i> ${msg.content}</p>\n`);
+            }
+        }
+
+        // when the page is loaded
+        $(document).ready(function () {
+            // get the chatbot object from localstorage
+            chatObj = getChatObj();
+            botName = chatObj.botName;
+            $("#agent").val(botName);
+            $("#header").html(`Chat with ${botName}`);
+            // when the user presses enter in the chatinput
+            $("#chatinput").keypress(function (e) {
+                // if the key pressed is enter
+                if (e.which == 13) {
+                    handleUserInput();
+                }
+            });
+            // when the user chooses a new agent
+            $("#agent").change(function () {
+                setAgent();
+            });
+            showChatLog();
+        });
+
+    </script>
+</body>
+
+</html>
