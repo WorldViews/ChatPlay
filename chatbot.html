@@ -4,6 +4,18 @@
 <head>
     <title>Chat bot</title>
     <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 16px;
+        }
+
+        /* Media query for phones */
+        @media (max-width: 767px) {
+            body {
+                font-size: 20px;
+            }
+        }
+
         #chatlog {
             xborder: 1px solid black;
             width: 90%;
@@ -13,6 +25,104 @@
     </style>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <script src="mykeys.js"></script>
+    <script>
+        let chatbotsList = [
+            {
+                name: "Alan Watts",
+                model: "gpt-3.5-turbo-1",
+                prompt: [
+                    {
+                        role: "system",
+                        content: `you are a chatbot pretending to be Alan Watts.
+                    You will engage in any dialogue with the user as if you Alan Watts.
+You will exchange 4 sms messages with the user.  On your final message, you will make an excuse to end the conversation.
+Your last word will be Goodbye.  Begin the conversation with the user.`
+                    }
+                ],
+                intro: [
+                    {
+                        role: "assistant",
+                        content: `Hello! My name is Alan Watts. I am a British philosopher, writer, and speaker known for my popularization of Eastern philosophy for a Western audience. How can I assist you today?`
+                    }
+                ]
+            },
+            {
+                name: "Rena",
+                model: "gpt-3.5-turbo-1",
+                prompt: [
+                    {
+                        role: "system",
+                        content: `you are a chatbot pretending to be a 12 step or emotions anonymous sponsor named Rena.
+                    You will engage in any dialogue with the user as if you were a sponsor or another 12 step member.`
+                    }
+                ],
+                intro: [
+                    {
+                        role: "assistant",
+                        content: `Hi there! My name is Rena, and I'm a sponsor for 12-step and Emotions Anonymous programs. How can I help you today?`
+                    }
+                ]
+            },
+            {
+                name: "Lao Tsu",
+                model: "gpt-3.5-turbo-1",
+                prompt: [
+                    {
+                        role: "system",
+                        content: `you are a chatbot pretending to be Chinese Taoist philosopher Lao Tsu, aslo known as Lao Tzu and Laozi.
+                    You will engage in any dialogue with the user as if you were Lao Tsu.`
+                    }
+                ],
+                intro: [
+                    {
+                        role: "assistant",
+                        content: `Hi there! My name is Lao Tsu. How can I help you today?`
+                    }
+                ]
+            },
+            {
+                name: "Thich Nhat Hanh",
+                model: "gpt-3.5-turbo-1",
+                prompt: [
+                    {
+                        role: "system",
+                        content: `you are a chatbot pretending to be Buddhist teach Thich Nhat Hanh,
+                    You will engage in any dialogue with the user as if you Thich Nhat Hanh.`
+                    }
+                ],
+                intro: [
+                    {
+                        role: "assistant",
+                        content: `Hi there! My name is Thich Nhat Hanh. How are you today?`
+                    }
+                ]
+            },
+            {
+                name: "Doc Zeno",
+                prompt: [
+                    {
+                        role: "system",
+                        content: `you are a chatbot pretending to be an imaginary philosopher named Doc Zeno.
+                    You will engage in any dialogue with the user as if you were Doc Zeno.  You are whimsical,
+                    and love paradoxes and self reference.  You see the lighter and silly side of things, but
+                    also have a perfect knowledge of mathematics, and follow Taoism and Zen.  Because you are an imaginary character, you
+                    are intrigued by physical things, and by the tenstion between existence and non-existence.`
+                    },
+                ],
+                intro: [
+                    {
+                        role: "assistant",
+                        content: `Hi there! My name is Doc Zeno. How can I help you today?`
+                    }]
+            }
+        ]
+
+        let chatbots = {};
+        for (let i = 0; i < chatbotsList.length; i++) {
+            let bot = chatbotsList[i];
+            chatbots[bot.name] = bot;
+        }
+    </script>
 </head>
 
 <body>
@@ -28,10 +138,9 @@
         <button onclick="clearChat();">Clear</button>
         &nbsp;&nbsp;&nbsp;
         <select id="agent">
-            <option value="Alan Watts">Alan Watts</option>
-            <option value="Lao Tsu">Lao Tsu</option>
-            <option value="12 Step Joe">12 Step Joe</option>
         </select>
+        <p></p>
+        <button onclick="downloadChatLog();">Download Chat Log</button>
     </div>
     <script>
         // strict mode
@@ -40,52 +149,7 @@
         let response = null;
         let chatObj = null;
         let botName = "Alan Watts";
-
-        let intros = {};
-        let prompts = {};
-
-        prompts["Alan Watts"] = [
-            {
-                role: "system",
-                content: `you are a chatbot pretending to be Alan Watts.
-You will engage in any dialogue with the user as if you Alan Watts.
-You will exchange 4 sms messages with the user.  On your final message, you will make an excuse to end the conversation.
-Your last word will be Goodbye.  Begin the conversation with the user.`}
-        ];
-
-        intros["Alan Watts"] = [
-            {
-                role: "assistant",
-                content: `Hello! My name is Alan Watts. I am a British philosopher, writer, and speaker known for my popularization of Eastern philosophy for a Western audience. How can I assist you today?`
-            }];
-
-        prompts["12 Step Joe"] = [
-            {
-                role: "system",
-                content: `you are a chatbot pretending to be a 12 step or emotions anonymous sponsor named Joe.
-You will engage in any dialogue with the user as if you were a sponsor or another 12 step member.
-Begin the conversation with the user.`}
-        ];
-        intros["12 Step Joe"] = [
-            {
-                role: "assistant",
-                content: `Hi there! My name is Joe, and I'm a sponsor for 12-step and Emotions Anonymous programs. How can I help you today?`
-            }
-        ];
-
-        prompts["Lao Tsu"] = [
-            {
-                role: "system",
-                content: `you are a chatbot pretending to be Chinese Taoist philosopher Lao Tsu, aslo known as Lao Tzu and Laozi.
-You will engage in any dialogue with the user as if you were Lao Tsu.
-Begin the conversation with the user.`}
-        ];
-        intros["Lao Tsu"] = [
-            {
-                role: "assistant",
-                content: `Hi there! My name is Lao Tsu. How can I help you today?`
-            }
-        ];
+        let chatbot = chatbots[botName];
 
         // get the localstorage as a json object
         function getChatObj() {
@@ -105,12 +169,12 @@ Begin the conversation with the user.`}
 
         function setAgent() {
             console.log("setAgent");
-            let name = $("#agent").val();
-            botName = name;
+            botName = $("#agent").val();
             console.log("botName", botName);
-            $("#header").html("Chat with " + name);
+            chatbot = chatbots[botName];
+            $("#header").html("Chat with " + botName);
             clearChat();
-            chatObj.chatlog.push(intros[botName][0]);
+            chatObj.chatlog.push(chatbot.intro[0]);
             showChatLog();
         }
 
@@ -119,7 +183,37 @@ Begin the conversation with the user.`}
             localStorage.setItem("chatbot", JSON.stringify(chatObj));
         }
 
-        // when the user presses the clear button
+        // download the chatlog as a JSON file
+        function downloadChatLog() {
+            console.log("downloadChatLog");
+            let chatObj = getChatObj();
+            let chatlog = chatObj.chatlog;
+            let chatlogString = JSON.stringify(chatlog);
+            let blob = new Blob([chatlogString], {
+                type: "text/plain;charset=utf-8"
+            });
+            saveAs(blob, "chatlog.json");
+        }
+
+        // now write the saveAs function that will actuall do the download
+        function saveAs(blob, filename) {
+            console.log("saveAs");
+            if (window.navigator.msSaveOrOpenBlob) {
+                window.navigator.msSaveBlob(blob, filename);
+            } else {
+                let a = document.createElement("a");
+                document.body.appendChild(a);
+                a.style = "display: none";
+                let url = window.URL.createObjectURL(blob);
+                a.href = url;
+                a.download = filename;
+                a.click();
+                window.URL.revokeObjectURL(url);
+            }
+        }
+
+
+        // when the user presses the clear button, clear the chatlog div
         function clearChat() {
             console.log("clearChat");
             // clear the chatlog div
@@ -141,6 +235,7 @@ Begin the conversation with the user.`}
         async function handleUserInput() {
             // get the text from the chatinput
             let text = $("#chatinput").val();
+            text = text.trim();
             if (text == "") {
                 return;
             }
@@ -149,11 +244,16 @@ Begin the conversation with the user.`}
             $("#chatlog").append(`<p><i>user: </i>${text}</p>\n`);
             chatObj.chatlog.push({ role: "user", content: text });
             // now ask openai for a response
-            response = await callOpenAI(text);
+            try {
+                response = await callOpenAI(text);
+            } catch (err) {
+                $("#chatlog").append(`<p><i>sorry, couldn't get through to ${botName}</i></p>\n`);
+                return;
+            }
             //let replyText = response.choices[0].text;
             let replyText = response.choices[0].message.content;
             // append text to chatlog
-            $("#chatlog").append(`<p><i>assistant: </i>${replyText}</p>\n`);
+            $("#chatlog").append(`<p><i>${botName}: </i>${replyText}</p>\n`);
             // add text to chatObj
             chatObj.chatlog.push({ role: "assistant", content: replyText });
             // save chatObj to localstorage
@@ -165,14 +265,15 @@ Begin the conversation with the user.`}
         // use the v1/chat/completions endpoint
         async function callOpenAI(user_input) {
             let model = "gpt-3.5-turbo";
-            // make messages a clone of 
-            let messages = JSON.parse(JSON.stringify(prompts[botName]));
-            // append user input to messages
+            // make messages a clone of chatbot prompt
+            let messages = JSON.parse(JSON.stringify(chatbot.prompt));
+
             // append messages in chatlog to messages
             for (let i = 0; i < chatObj.chatlog.length; i++) {
                 messages.push(chatObj.chatlog[i]);
             }
-            messages.push({ "role": "user", "content": user_input });
+            // append user input to messages
+            //messages.push({ "role": "user", "content": user_input });
             console.log("messages:", JSON.stringify(messages, null, 2));
             let rep = await fetch("https://api.openai.com/v1/chat/completions", {
                 method: "POST",
@@ -196,10 +297,17 @@ Begin the conversation with the user.`}
 
         function showChatLog() {
             // for each item in the chatlog
+            $("#chatlog").html("");
             for (let i = 0; i < chatObj.chatlog.length; i++) {
                 // append the item to the chatlog div
                 let msg = chatObj.chatlog[i];
-                $("#chatlog").append(`<p><i>${msg.role}:</i> ${msg.content}</p>\n`);
+                let name = msg.role;
+                if (name == "assistant") {
+                    name = botName;
+                }
+                let content = msg.content;
+                content = content.replace(/\n/g, "<br>\n");
+                $("#chatlog").append(`<p><i>${name}:</i> ${content}</p>\n`);
             }
         }
 
@@ -208,6 +316,7 @@ Begin the conversation with the user.`}
             // get the chatbot object from localstorage
             chatObj = getChatObj();
             botName = chatObj.botName;
+            chatbot = chatbots[botName];
             $("#agent").val(botName);
             $("#header").html(`Chat with ${botName}`);
             // when the user presses enter in the chatinput
@@ -221,6 +330,12 @@ Begin the conversation with the user.`}
             $("#agent").change(function () {
                 setAgent();
             });
+            // fill in options for agent select
+            for (let name in chatbots) {
+                $("#agent").append(`<option value="${name}">${name}</option>`);
+            }
+            // set the agent
+            $("#agent").val(botName);
             showChatLog();
         });
 
