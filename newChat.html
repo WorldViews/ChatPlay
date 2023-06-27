@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Muse Chat</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <!-- Include Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="mykeys.js"></script>
+    <script src="botdefs.js"></script>
+    <script src="ChatTool.js"></script>
+    <script>
+        // Initialize Firebase
+        /*
+        const firebaseConfig = {
+            apiKey: "*",
+            authDomain: "*",
+            databaseURL: "*",
+            projectId: "*",
+            storageBucket: "*",
+            messagingSenderId: "*",
+            appId: "*"
+        };
+        */
+        "use strict";
+
+        let chatTool = new ChatTool(lineHandler);
+
+        let user = null;
+        let db = null;
+
+        function lineWatcher(msg) {
+            console.log("lineWatcher", msg);
+        }
+
+        async function initChatDBStuff() {
+            console.log("initChatDBStuff");
+            db = firebase.database();
+            console.log("db", db);
+            store = new FBStorage(db);
+            let chatObj = await store.load();
+            console.log("chatObj", chatObj);
+        }
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        db = firebase.database();
+        let dbRef = db.ref('/userState');
+        console.log("Got dbRef", dbRef);
+        //initChatDBStuff(db);
+
+        dbRef.on('value', snap => {
+            noticeUserStates(snap);
+        });
+
+        auth.onAuthStateChanged(async user_ => {
+            console.log("authStateChange", user_);
+            user = user_;
+            if (user) {
+                // User is signed in.
+                var displayName = user.displayName;
+                userName = displayName;
+                var email = user.email;
+                var emailVerified = user.emailVerified;
+                var photoURL = user.photoURL;
+                var isAnonymous = user.isAnonymous;
+                var uid = user.uid;
+                var providerData = user.providerData;
+                $("#userInfo").html(user.displayName + " " + user.email);
+                $("#login").html("signout");
+                await chatTool.initFirebaseDB(user, db);
+                //await initChatDBStuff(db);
+                await initChatStuff();
+            } else {
+                // User is signed out.
+                // ...
+                $("#userInfo").html("guest");
+                $("#login").html("login");
+            }
+        });
+
+
+        function noticeUserStates(snap) {
+            console.log("noticeUserStates Got", snap);
+            var obj = snap.val();
+            console.log("obj", obj);
+            //var jstr = JSON.stringify(obj, null, 3);
+            //console.log("userState", jstr);
+        }
+
+        // Email login
+        function emailLogin() {
+            const email = document.getElementById("email").value;
+            const password = document.getElementById("password").value;
+
+            auth.signInWithEmailAndPassword(email, password)
+                .then((userCredential) => {
+                    // Logged in successfully
+                    user = userCredential.user;
+                    console.log("got user:", user);
+                    console.log("name:", user.displayName);
+                })
+                .catch((error) => {
+                    // Handle login errors
+                    const errorCode = error.code;
+                    const errorMessage = error.message;
+                    console.log(errorCode, errorMessage);
+                });
+        }
+
+        // Google login
+        function googleLogin() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+
+            auth.signInWithPopup(provider)
+                .then((userCredential) => {
+                    // Logged in successfully
+                    user = userCredential.user;
+                    console.log("got user:", user);
+                    console.log("name:", user.displayName);
+                })
+                .catch((error) => {
+                    // Handle login errors
+                    const errorCode = error.code;
+                    const errorMessage = error.message;
+                    console.log(errorCode, errorMessage);
+                });
+        }
+
+        // Logout function
+        function logout() {
+            auth.signOut()
+                .then(() => {
+                    // Successful logout
+                    user = null;
+                    console.log('User logged out');
+                    console.log("user:", user);
+                })
+                .catch((error) => {
+                    // Handle logout errors
+                    console.log('Logout error:', error);
+                });
+        }
+
+        // Example usage of the logout function
+        // logout();
+        $(document).ready(async e => {
+           // initChatStuff();
+        });
+
+    </script>
+</head>
+
+<body>
+    <h1 id="header">Chat</h1>
+    <div id="chatlog">
+    </div>
+    <p></p>
+    <div id="chatbox">
+        <textarea id="chatinput" rows="3" cols="60"></textarea>
+        &nbsp;&nbsp;&nbsp;
+        <button onclick="handleUserInput();">Send</button>
+        &nbsp;&nbsp;&nbsp;
+        <button onclick="clearChat();">Clear</button>
+        &nbsp;&nbsp;&nbsp;
+        <select id="agent">
+        </select>
+        <p></p>
+        <button onclick="downloadChatLog();">Download Chat Log</button>
+    </div>
+
+    <span id="userInfo">guest</span>
+
+    <h2>Email Login</h2>
+    <input type="email" id="email" placeholder="Email" required>
+    <input type="password" id="password" placeholder="Password" required>
+    <button onclick="emailLogin()">Login</button>
+
+    <h2>Google Login</h2>
+    <button onclick="googleLogin()">Login with Google</button>
+
+    <button onclick="logout()">Logout</button>
+
+</body>
+
+</html>
