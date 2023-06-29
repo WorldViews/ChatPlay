@@ -24,25 +24,22 @@ class Storage {
     }
 }
 
-class LocalStorage extends Storage {
-    async save(obj) {
-        console.log("LocalStorage.save", obj);
-        localStorage.setItem("chatbot", JSON.stringify(obj));
-    }
-
-    async load() {
-        console.log("LocalStorage.load");
-        let obj = JSON.parse(localStorage.getItem("chatbot"));
-        console.log(" >>", obj);
-        return obj;
-    }
-}
-
 class FBStorage extends Storage {
-    constructor(db) {
+    constructor(db, space) {
         super();
         this.db = db;
-        this.chatRef = db.ref('/chatlog');
+        this.space = space;
+        this.chatRef = db.ref(`/chats/${this.space}`);
+    }
+
+   async registerLineWatcher(watcher) {
+        console.log("FBStorage.registerLineWatcher", this.db);
+        let ref = await this.db.ref(`/chats/${this.space}/chatlog`);
+        this.watcher = watcher;
+        ref.on('child_added', (snapshot) => {
+            let msg = snapshot.val();
+            watcher(msg);
+        });
     }
 
     async load() {
@@ -56,6 +53,11 @@ class FBStorage extends Storage {
     async save(obj) {
         console.log("FBStorage save", obj);
         await this.chatRef.set(obj);
+    }
+
+    async appendMessage(msg) {
+        console.log("FBStorage appendMessage", msg);
+        await this.db.ref(`/chats/${this.space}/chatlog`).push(msg);
     }
 }
 
@@ -71,6 +73,7 @@ class ChatTool {
         this.botName = "Alan Watts";
         this.chatbot = this.chatbots[this.botName];
         this.chatObj = { botName: this.botName, chatlog: [] };
+        this.messages = [];
         this.dump();
     }
 
@@ -90,23 +93,31 @@ class ChatTool {
 
     async appendLine(msg) {
         console.log("ChatTool.appendLine", msg);
-        this.chatObj.chatlog.push(msg);
-        this.lineWatcher(msg);
-        //await saveChatObj(chatObj);
-        await this.store.save(this.chatObj);
+        //this.chatObj.chatlog.push(msg);
+        this.messages.push(msg);
+        await this.store.appendMessage(msg);
+        //await this.store.save(this.chatObj);
+        //this.lineWatcher(msg);
     }
 
     async clearChat() {
+        this.messages = [];
         this.chatObj.chatlog = [];
         this.chatObj.botName = this.botName;
         await this.store.save(this.chatObj);
     }
 
     async initFirebaseDB(user, db) {
-        console.log("ChatTool.initFirebaseDB");
+        console.log("ChatTool.initFirebaseDB", user, db);
+        let inst = this;
         this.user = user;
         this.db = db;
-        this.store = new FBStorage(db);
+        this.store = new FBStorage(db,this.space);
+        this.store.registerLineWatcher(msg => {
+            console.log("myLineWatcher", msg);
+            this.messages.push(msg);
+            inst.lineWatcher(msg);
+        });
         console.log("initFirebaseDB getting chatObj from store");
         let chatObj = await this.store.load();
         this.chatObj = chatObj;
@@ -115,16 +126,9 @@ class ChatTool {
         console.log("chatObj", chatObj);
         if (chatObj.chatlog == null) {
             chatObj.chatlog = [];
+            this.messages = [];
         }
         console.log("chatObj", chatObj);
-        let lineMsgs = chatObj.chatlog;
-        if (!lineMsgs) {
-            lineMsgs = [];
-        }
-        for (let i = 0; i < lineMsgs.length; i++) {
-            let line = lineMsgs[i];
-            this.lineWatcher(line);
-        }
         return chatObj;
     }
 
@@ -134,9 +138,8 @@ class ChatTool {
         let model = "gpt-3.5-turbo";
         // make messages a clone of chatbot prompt
         let messages = clone(this.chatbot.prompt);
-
         // append messages in chatlog to messages
-        let lineMsgs = this.chatObj.chatlog;
+        let lineMsgs = this.messages;
         for (let i = 0; i < lineMsgs.length; i++) {
             let msg = lineMsgs[i];
             let role = msg.role;
@@ -146,7 +149,7 @@ class ChatTool {
             msg = { role, content: msg.content }
             messages.push(msg);
         }
-        console.log("messages:", JSON.stringify(messages, null, 2));
+        console.log("messages sent to openai:", JSON.stringify(messages, null, 2));
         let rep = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -170,12 +173,12 @@ class ChatTool {
         // append text to chatlog
         let name = firstName(userName);
         let lineMsg = { role: "user", content: text, name, userName };
-        chatTool.appendLine(lineMsg);
-        let botName = chatTool.botName;
+        this.appendLine(lineMsg);
+        let botName = this.botName;
         // now ask openai for a response
         let response = null;
         try {
-            response = await chatTool.callOpenAI();
+            response = await this.callOpenAI();
         } catch (err) {
             console.log("error", err);
             $("#chatlog").append(`<p><i>sorry, couldn't get through to ${botName}</i></p>\n`);
@@ -183,7 +186,7 @@ class ChatTool {
         }
         let replyText = response.choices[0].message.content;
         let msg = { role: "assistant", content: replyText, botName }
-        chatTool.appendLine(msg)
+        this.appendLine(msg)
     }
 
     dump() {
@@ -281,7 +284,7 @@ function lineHandler(msg) {
         name = firstName(name);
     }
     let content = msg.content;
-    content = content.replace(/\n/g, "<br>\n");
+    //content = content.replace(/\n/g, "<br>\n");
     $("#chatlog").append(`<p><i>${name}:</i> ${content}</p>\n`);
 }
 
