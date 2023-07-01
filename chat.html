@@ -8,22 +8,11 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="html_to_rtf.js"></script>
     <script src="mykeys.js"></script>
     <script src="botdefs.js"></script>
     <script src="ChatTool.js"></script>
     <script>
-        // Initialize Firebase
-        /*
-        const firebaseConfig = {
-            apiKey: "*",
-            authDomain: "*",
-            databaseURL: "*",
-            projectId: "*",
-            storageBucket: "*",
-            messagingSenderId: "*",
-            appId: "*"
-        };
-        */
         "use strict";
 
         let chatTool = new ChatTool(lineHandler);
@@ -35,21 +24,11 @@
             console.log("lineWatcher", msg);
         }
 
-        async function initChatDBStuff() {
-            console.log("initChatDBStuff");
-            db = firebase.database();
-            console.log("db", db);
-            store = new FBStorage(db);
-            let chatObj = await store.load();
-            console.log("chatObj", chatObj);
-        }
-
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         db = firebase.database();
         let dbRef = db.ref('/userState');
         console.log("Got dbRef", dbRef);
-        //initChatDBStuff(db);
 
         dbRef.on('value', snap => {
             noticeUserStates(snap);
@@ -71,7 +50,6 @@
                 $("#userInfo").html(user.displayName + " " + user.email);
                 $("#login").html("signout");
                 await chatTool.initFirebaseDB(user, db);
-                //await initChatDBStuff(db);
                 await initChatStuff();
             } else {
                 // User is signed out.
@@ -147,20 +125,22 @@
         // Example usage of the logout function
         // logout();
         $(document).ready(async e => {
-           // initChatStuff();
+            // initChatStuff();
         });
 
     </script>
 </head>
 
 <body>
-    <h1 id="header">Chat</h1>
-    <div id="chatlog">
+    <div id="chatdoc">
+        <h1 id="header">Chat</h1>
+        <div id="chatlog">
+        </div>
     </div>
     <p></p>
     <div id="chatbox">
         <textarea id="chatinput" rows="3" cols="60"></textarea>
-        &nbsp;&nbsp;&nbsp;
+        <p></p>
         <button onclick="handleUserInput();">Send</button>
         &nbsp;&nbsp;&nbsp;
         <button onclick="clearChat();">Clear</button>
@@ -168,7 +148,6 @@
         <select id="agent">
         </select>
         <p></p>
-        <button onclick="downloadChatLog();">Download Chat Log</button>
     </div>
 
     <span id="userInfo">guest</span>
@@ -182,6 +161,12 @@
     <button onclick="googleLogin()">Login with Google</button>
 
     <button onclick="logout()">Logout</button>
+    <p></p>
+    <b>Download:</b>
+    &nbsp;
+    <button onclick="downloadChatLogJSON();">JSON</button>
+    &nbsp;
+    <button onclick="downloadChatLogRTF();">RTF</button>
 
 </body>
 

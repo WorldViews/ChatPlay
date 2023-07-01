@@ -2,18 +2,64 @@
 // strict mode
 "use strict";
 
+// get query string parameters from URL
+function getQueryStringParams() {
+    let params = {};
+    let query = window.location.search.substring(1);
+    let vars = query.split("&");
+    for (let i = 0; i < vars.length; i++) {
+        let pair = vars[i].split("=");
+        params[pair[0]] = decodeURIComponent(pair[1]);
+    }
+    return params;
+}
+
+// get query string parameter by name
+function getQueryStringParam(name) {
+    let params = getQueryStringParams();
+    return params[name];
+}
+
+// get the space name to use for this chat
+function getSpaceName() {
+    let spaceName = getQueryStringParam("space");
+    if (spaceName == null) {
+        spaceName = "Garden2";
+    }
+    return spaceName;
+}
+
+// return time in seconds
+function getClockTime() {
+    return Date.now() / 1000.0;
+}
+
+function timeToMDY_HMS(time) {
+    let date = new Date(time * 1000);
+    let mdy = date.toLocaleDateString();
+    let hms = date.toLocaleTimeString();
+    return `${mdy} ${hms}`;
+}
+
 // return the first name of a name with one or more words separated by spaces
 function firstName(name) {
     let names = name.split(" ");
     return names[0];
 }
 
-
 function clone(obj) {
     return JSON.parse(JSON.stringify(obj));
 }
 
+// This is the base class for our persistent storage.
+// Two versions we will implement are LocalStorage and FirebaseStorage.
+//
 class Storage {
+
+    async registerMessageWatcher(watcher) {
+        console.log("registerMessageWatcher not implemented");
+    }
+    
     async save(obj) {
         console.log("save not implemented");
     }
@@ -21,6 +67,10 @@ class Storage {
     async load() {
         console.log("load not implemented");
         return null;
+    }
+
+    async appendMessage(msg) {
+        console.log("appendMessage not implemented");
     }
 }
 
@@ -32,9 +82,9 @@ class FBStorage extends Storage {
         this.chatRef = db.ref(`/chats/${this.space}`);
     }
 
-   async registerLineWatcher(watcher) {
-        console.log("FBStorage.registerLineWatcher", this.db);
-        let ref = await this.db.ref(`/chats/${this.space}/chatlog`);
+   async registerMessageWatcher(watcher) {
+        console.log("FBStorage.registerMessageWatcher", this.db);
+        let ref = await this.db.ref(`/chats/${this.space}/messages`);
         this.watcher = watcher;
         ref.on('child_added', (snapshot) => {
             let msg = snapshot.val();
@@ -57,12 +107,31 @@ class FBStorage extends Storage {
 
     async appendMessage(msg) {
         console.log("FBStorage appendMessage", msg);
-        await this.db.ref(`/chats/${this.space}/chatlog`).push(msg);
+        await this.db.ref(`/chats/${this.space}/messages`).push(msg);
+    }
+}
+
+// return a descriptor string for this chat
+function getChatDesc(botName) {
+    let startTime = getClockTime();
+    let mdy_hms = timeToMDY_HMS(startTime);
+    return `${botName} ${mdy_hms}`;
+}
+
+function newChatObj(botName) {
+    return {
+        botName: botName,
+        startTime: getClockTime(),
+        chatName: getChatDesc(botName),
+        messages: []
     }
 }
 
 class ChatTool {
-    constructor(lineWatcher, space = "Garden") {
+    constructor(lineWatcher, space) {
+        if (space == null) {
+            space = getSpaceName();
+        }
         this.space = space;
         this.lineWatcher = lineWatcher;
         this.chatbots = {};
@@ -72,12 +141,12 @@ class ChatTool {
         }
         this.botName = "Alan Watts";
         this.chatbot = this.chatbots[this.botName];
-        this.chatObj = { botName: this.botName, chatlog: [] };
+        this.chatObj = newChatObj(this.botName);
         this.messages = [];
         this.dump();
     }
 
-    async getChatObj() {
+    getChatObj() {
         return this.chatObj;
     }
 
@@ -93,17 +162,13 @@ class ChatTool {
 
     async appendLine(msg) {
         console.log("ChatTool.appendLine", msg);
-        //this.chatObj.chatlog.push(msg);
         this.messages.push(msg);
         await this.store.appendMessage(msg);
-        //await this.store.save(this.chatObj);
-        //this.lineWatcher(msg);
     }
 
     async clearChat() {
         this.messages = [];
-        this.chatObj.chatlog = [];
-        this.chatObj.botName = this.botName;
+        this.chatObj = newChatObj(this.botName);
         await this.store.save(this.chatObj);
     }
 
@@ -113,23 +178,22 @@ class ChatTool {
         this.user = user;
         this.db = db;
         this.store = new FBStorage(db,this.space);
-        this.store.registerLineWatcher(msg => {
+        this.store.registerMessageWatcher(msg => {
             console.log("myLineWatcher", msg);
             this.messages.push(msg);
             inst.lineWatcher(msg);
         });
         console.log("initFirebaseDB getting chatObj from store");
         let chatObj = await this.store.load();
+        if (chatObj == null) {
+            console.log("Creating new chat");
+            this.clearChat();
+            chatObj = await this.store.load();
+        }
         this.chatObj = chatObj;
         this.botName = chatObj.botName;
         this.chatbot = this.chatbots[this.botName];
         console.log("chatObj", chatObj);
-        if (chatObj.chatlog == null) {
-            chatObj.chatlog = [];
-            this.messages = [];
-        }
-        console.log("chatObj", chatObj);
-        return chatObj;
     }
 
     // and return the response
@@ -172,7 +236,10 @@ class ChatTool {
     async handleUserInput(text, userName) {
         // append text to chatlog
         let name = firstName(userName);
-        let lineMsg = { role: "user", content: text, name, userName };
+        let lineMsg = { 
+            role: "user", content: text,
+            time: getClockTime(),
+            name, userName };
         this.appendLine(lineMsg);
         let botName = this.botName;
         // now ask openai for a response
@@ -185,7 +252,8 @@ class ChatTool {
             return;
         }
         let replyText = response.choices[0].message.content;
-        let msg = { role: "assistant", content: replyText, botName }
+        let msg = { role: "assistant", content: replyText,
+                    botName, time: getClockTime() }
         this.appendLine(msg)
     }
 
@@ -208,15 +276,33 @@ async function setAgent() {
 
 
 // download the chatlog as a JSON file
-async function downloadChatLog() {
-    console.log("downloadChatLog");
-    let chatObj = await chatTool.getChatObj();
-    let chatlog = chatObj.chatlog;
-    let chatlogString = JSON.stringify(chatlog);
-    let blob = new Blob([chatlogString], {
+async function downloadChatLogJSON() {
+    console.log("downloadChatLogJSON");
+    let chatObj = clone(chatTool.getChatObj());
+    // We want to just use a list instead of the keys
+    // that are in firestore.  Not sure what is best to
+    // do for this.
+    chatObj.messages = chatTool.messages;
+    console.log("chatObj", chatObj);
+    let chatObjString = JSON.stringify(chatObj);
+    let blob = new Blob([chatObjString], {
         type: "text/plain;charset=utf-8"
     });
-    saveAs(blob, "chatlog.json");
+    let fname = getChatDesc(chatTool.botName)+".json";
+    saveAs(blob, fname);
+}
+
+// download the chatlog as a JSON file
+async function downloadChatLogRTF() {
+    console.log("downloadChatLog");
+    const htmlStr = document.getElementById("chatdoc").innerHTML;
+    var htmlToRtfLocal = new window.htmlToRtf();
+    var rtfContent = htmlToRtfLocal.convertHtmlToRtf(htmlStr);
+    let blob = new Blob([rtfContent], {
+        type: "application/rtf;charset=utf-8"
+    });
+    let fname = getChatDesc(chatTool.botName)+".rtf";
+    saveAs(blob, fname);
 }
 
 // now write the saveAs function that will actually do the download
