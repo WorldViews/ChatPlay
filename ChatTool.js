@@ -144,6 +144,7 @@ class ChatTool {
         this.chatObj = newChatObj(this.botName);
         this.messages = [];
         this.dump();
+        this.showNamesToAPI = true;
     }
 
     getChatObj() {
@@ -206,11 +207,13 @@ class ChatTool {
         let lineMsgs = this.messages;
         for (let i = 0; i < lineMsgs.length; i++) {
             let msg = lineMsgs[i];
+            let text = msg.content;
             let role = msg.role;
-            if (role == "user" && msg.userName) {
-                let xrole = firstName(msg.userName);
+            if (role == "user" && msg.userName && this.showNamesToAPI) {
+                let name = firstName(msg.userName);
+                text = `${name}: ${text}`;
             }
-            msg = { role, content: msg.content }
+            msg = { role, content: text }
             messages.push(msg);
         }
         console.log("messages sent to openai:", JSON.stringify(messages, null, 2));
@@ -236,6 +239,14 @@ class ChatTool {
     async handleUserInput(text, userName) {
         // append text to chatlog
         let name = firstName(userName);
+        // if text starts with a name (not containing whitespace) and :,
+        // then extract the name and remove it from start of text
+        let m = text.match(/^(\S+):/);
+        if (m) {
+            name = m[1];
+            userName = name;
+            text = text.substring(name.length + 1);
+        }
         let lineMsg = { 
             role: "user", content: text,
             time: getClockTime(),

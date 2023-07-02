@@ -48,14 +48,17 @@
                 var uid = user.uid;
                 var providerData = user.providerData;
                 $("#userInfo").html(user.displayName + " " + user.email);
-                $("#login").html("signout");
+                //$("#login").html("signout");
+                $("#loginButton").html("Logout");
+                $("#loginDiv").hide(0.5);
                 await chatTool.initFirebaseDB(user, db);
                 await initChatStuff();
             } else {
                 // User is signed out.
                 // ...
                 $("#userInfo").html("guest");
-                $("#login").html("login");
+                $("#loginButton").html("Login");
+                //$("#login").html("login");
             }
         });
 
@@ -107,6 +110,18 @@
                 });
         }
 
+        function handleLoginButton() {
+            if ($("#loginButton").html() == "Login") {
+                //$("#loginButton").html("Logout");
+                $("#loginDiv").show(0.5);
+            }
+            else {
+                logout();
+                $("#loginButton").html("Login");
+                $("#loginDiv").hide(0.5);
+            }
+        }
+
         // Logout function
         function logout() {
             auth.signOut()
@@ -151,16 +166,18 @@
     </div>
 
     <span id="userInfo">guest</span>
+    &nbsp;&nbsp;&nbsp;
+    <button id="loginButton" onclick="handleLoginButton()">Login</button>
+    <div id="loginDiv"
+         style="border: solid; padding: 10px; margin: 5px; width:fit-content; display: none">
+        <h2>Email Login</h2>
+        <input type="email" id="email" placeholder="Email" required>
+        <input type="password" id="password" placeholder="Password" required>
+        <button onclick="emailLogin()">Login</button>
 
-    <h2>Email Login</h2>
-    <input type="email" id="email" placeholder="Email" required>
-    <input type="password" id="password" placeholder="Password" required>
-    <button onclick="emailLogin()">Login</button>
-
-    <h2>Google Login</h2>
-    <button onclick="googleLogin()">Login with Google</button>
-
-    <button onclick="logout()">Logout</button>
+        <h2>Google Login</h2>
+        <button onclick="googleLogin()">Login with Google</button>
+    </div>
     <p></p>
     <b>Download:</b>
     &nbsp;
