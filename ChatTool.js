@@ -59,7 +59,7 @@ class Storage {
     async registerMessageWatcher(watcher) {
         console.log("registerMessageWatcher not implemented");
     }
-    
+
     async save(obj) {
         console.log("save not implemented");
     }
@@ -82,7 +82,7 @@ class FBStorage extends Storage {
         this.chatRef = db.ref(`/chats/${this.space}`);
     }
 
-   async registerMessageWatcher(watcher) {
+    async registerMessageWatcher(watcher) {
         console.log("FBStorage.registerMessageWatcher", this.db);
         let ref = await this.db.ref(`/chats/${this.space}/messages`);
         this.watcher = watcher;
@@ -137,6 +137,9 @@ class ChatTool {
         this.chatbots = {};
         for (let i = 0; i < chatbotsList.length; i++) {
             let bot = chatbotsList[i];
+            if (bot.hidden) {
+                continue;
+            }
             this.chatbots[bot.name] = bot;
         }
         this.botName = "Alan Watts";
@@ -145,25 +148,33 @@ class ChatTool {
         this.messages = [];
         this.dump();
         this.showNamesToAPI = true;
+        this.autoReply = true;
+    }
+
+    setAutoReply(autoReply) {
+        console.log("ChatTool.setAutoReply", autoReply);
+        this.autoReply = autoReply;
     }
 
     getChatObj() {
         return this.chatObj;
     }
 
-    async setAgent(botName) {
+    async setAgent(botName, showPrompt = true) {
         //this.clearChat();   // maybe later skip this
         this.botName = botName;
         this.chatbot = this.chatbots[botName];
         this.chatObj.botName = botName;
-        let lineMsg = clone(this.chatbot.intro[0]);
-        lineMsg.botName = botName;
-        this.appendLine(lineMsg);
+        if (showPrompt) {
+            let lineMsg = clone(this.chatbot.intro[0]);
+            lineMsg.botName = botName;
+            this.appendLine(lineMsg);
+        }
     }
 
     async appendLine(msg) {
         console.log("ChatTool.appendLine", msg);
-        this.messages.push(msg);
+        //this.messages.push(msg);
         await this.store.appendMessage(msg);
     }
 
@@ -178,7 +189,7 @@ class ChatTool {
         let inst = this;
         this.user = user;
         this.db = db;
-        this.store = new FBStorage(db,this.space);
+        this.store = new FBStorage(db, this.space);
         this.store.registerMessageWatcher(msg => {
             console.log("myLineWatcher", msg);
             this.messages.push(msg);
@@ -199,8 +210,8 @@ class ChatTool {
 
     // and return the response
     // use the v1/chat/completions endpoint
-    async callOpenAI() {
-        let model = "gpt-3.5-turbo";
+    async callOpenAI(model) {
+        console.log("ChatTool.callOpenAI", model);
         // make messages a clone of chatbot prompt
         let messages = clone(this.chatbot.prompt);
         // append messages in chatlog to messages
@@ -236,6 +247,30 @@ class ChatTool {
         return response;
     }
 
+    async callCurrentAgent() {
+        let model = "gpt-3.5-turbo";
+        //model = "gpt-4";
+        //model = 'gpt-4-0613';
+
+        let botName = this.botName;
+        console.log("callCurrentAgent", botName);
+        // now ask openai for a response
+        let response = null;
+        try {
+            response = await this.callOpenAI(model);
+        } catch (err) {
+            console.log("error", err);
+            $("#chatlog").append(`<p><i>sorry, couldn't get through to ${botName}</i></p>\n`);
+            return;
+        }
+        let replyText = response.choices[0].message.content;
+        let msg = {
+            role: "assistant", content: replyText,
+            model, botName, time: getClockTime()
+        }
+        this.appendLine(msg)
+    }
+
     async handleUserInput(text, userName) {
         // append text to chatlog
         let name = firstName(userName);
@@ -247,25 +282,15 @@ class ChatTool {
             userName = name;
             text = text.substring(name.length + 1);
         }
-        let lineMsg = { 
+        let lineMsg = {
             role: "user", content: text,
             time: getClockTime(),
-            name, userName };
+            name, userName
+        };
         this.appendLine(lineMsg);
-        let botName = this.botName;
-        // now ask openai for a response
-        let response = null;
-        try {
-            response = await this.callOpenAI();
-        } catch (err) {
-            console.log("error", err);
-            $("#chatlog").append(`<p><i>sorry, couldn't get through to ${botName}</i></p>\n`);
-            return;
+        if (this.autoReply) {
+            await this.callCurrentAgent();
         }
-        let replyText = response.choices[0].message.content;
-        let msg = { role: "assistant", content: replyText,
-                    botName, time: getClockTime() }
-        this.appendLine(msg)
     }
 
     dump() {
@@ -277,6 +302,7 @@ class ChatTool {
 
 let userName = "guest";
 
+// this is called when the user selects an agent (chatbot)
 async function setAgent() {
     console.log("setAgent");
     let botName = $("#agent").val();
@@ -285,6 +311,12 @@ async function setAgent() {
     chatTool.setAgent(botName);
 }
 
+async function callAgent(name) {
+    console.log("callAgent", name);
+    $("#agent").val(name);
+    chatTool.setAgent(name, false);
+    chatTool.callCurrentAgent();
+}
 
 // download the chatlog as a JSON file
 async function downloadChatLogJSON() {
@@ -299,7 +331,7 @@ async function downloadChatLogJSON() {
     let blob = new Blob([chatObjString], {
         type: "text/plain;charset=utf-8"
     });
-    let fname = getChatDesc(chatTool.botName)+".json";
+    let fname = getChatDesc(chatTool.botName) + ".json";
     saveAs(blob, fname);
 }
 
@@ -312,7 +344,7 @@ async function downloadChatLogRTF() {
     let blob = new Blob([rtfContent], {
         type: "application/rtf;charset=utf-8"
     });
-    let fname = getChatDesc(chatTool.botName)+".rtf";
+    let fname = getChatDesc(chatTool.botName) + ".rtf";
     saveAs(blob, fname);
 }
 
@@ -385,6 +417,23 @@ function lineHandler(msg) {
     $("#chatlog").append(`<p><i>${name}:</i> ${content}</p>\n`);
 }
 
+async function setAutoReply() {
+    console.log("setAutoReply");
+    // see if autoReply is checked
+    let autoReply = $("#autoReply").prop("checked");
+    console.log("autoReply", autoReply);
+    if (autoReply) {
+        console.log("hiding agentButtons")
+        $("#chatbotButtons").hide(500);
+    }
+    else {
+        console.log("showing agentButtons")
+        $("#chatbotButtons").show(500);
+    }
+
+    chatTool.setAutoReply(autoReply);
+}
+
 async function initChatStuff() {
     console.log("starting chatbot version 0.000103");
     let botName = chatTool.botName;
@@ -402,11 +451,20 @@ async function initChatStuff() {
         setAgent();
     });
     // fill in options for agent select
+    $("#agent").html("");
     for (let name in chatTool.chatbots) {
         $("#agent").append(`<option value="${name}">${name}</option>`);
     }
     // set the agent
     $("#agent").val(botName);
+    //
+    // create a button for each chatbot
+    $("#chatbotButtons").html("");
+    for (let name in chatTool.chatbots) {
+        let chatbot = chatTool.chatbots[name];
+        $("#chatbotButtons").append(
+            `<button class="chatbotButton" onclick="callAgent('${name}')">${name}</button>`);
+    }
 }
 
 
