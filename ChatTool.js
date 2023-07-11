@@ -475,10 +475,9 @@ function lineHandler(msg) {
     let id = keyToId(key);
     console.log("id", id);
     //content = content.replace(/\n/g, "<br>\n");
-    let jqElem = $("#chatlog").append(`<p id="${id}"><i>${name}:</i> ${content}</p>\n`);
-    jqElem = $("#" + id);
+    $("#chatlog").append(`<p id="${id}"><i>${name}:</i> ${content}</p>\n`);
+    let jqElem = $("#" + id);
     jqElem.click(() => {
-    //$("#" + id).click(() => {
         console.log("click", key, id);
         jqElem.css("background-color", "yellow");
     });
