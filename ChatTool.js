@@ -82,21 +82,22 @@ class FBStorage extends Storage {
         this.chatRef = db.ref(`/chats/${this.space}`);
     }
 
-    async registerMessageWatcher(watcher, removeWatcher) {
+    async registerMessageWatcher(msgWatcher) {
         console.log("FBStorage.registerMessageWatcher", this.db);
         let ref = await this.db.ref(`/chats/${this.space}/messages`);
-        this.watcher = watcher;
+        this.msgWatcher = msgWatcher;
         ref.on('child_added', (snapshot) => {
             let msg = snapshot.val();
             msg.key = snapshot.key;
-            watcher(msg);
+            msgWatcher.handleNewMessage(msg);
         });
         ref.on('child_changed', (snapshot) => {
             console.log("child_changed", snapshot);
+            msgWatcher.handleChangedMessage(snapshot);
         });
         ref.on('child_removed', (snapshot) => {
             console.log("child_removed", snapshot);
-            removeWatcher(snapshot);
+            msgWatcher.handleDeletedMessage(snapshot);
         });
     }
 
@@ -214,29 +215,7 @@ class ChatTool {
         this.user = user;
         this.db = db;
         this.store = new FBStorage(db, this.space);
-        this.store.registerMessageWatcher(msg => {
-                        console.log("myLineWatcher", msg);
-                        this.messages.push(msg);
-                        inst.lineWatcher(msg);
-                    },
-                    snap => {
-                        console.log("remove Watcher", snap);
-                        let key = snap.key;
-                        console.log("key", key);
-                        // remove msg from messages with key
-                        for (let i = 0; i < this.messages.length; i++) {
-                            let msg = this.messages[i];
-                            console.log("i, key", i, msg.key);
-                            if (msg.key == key) {
-                                console.log("*** bingo");
-                                this.messages.splice(i, 1);
-                                lineRemover(msg);
-                                return;
-                            }
-                        }
-                        console.log("key not found", key);
-                    }
-        );
+        this.store.registerMessageWatcher(this);
         console.log("initFirebaseDB getting chatObj from store");
         let chatObj = await this.store.load();
         if (chatObj == null) {
@@ -248,6 +227,34 @@ class ChatTool {
         this.botName = chatObj.botName;
         this.chatbot = this.chatbots[this.botName];
         console.log("chatObj", chatObj);
+    }
+
+    handleNewMessage(msg) {
+        console.log("myLineWatcher", msg);
+        this.messages.push(msg);
+        this.lineWatcher(msg);
+    }
+
+    handleChangedMessage(snap) {
+        console.log("handleChangedMessage", snap);
+    }
+
+    handleDeletedMessage(snap) {
+        console.log("handleDeletedMessage", snap);
+        let key = snap.key;
+        console.log("key", key);
+        // remove msg from messages with key
+        for (let i = 0; i < this.messages.length; i++) {
+            let msg = this.messages[i];
+            console.log("i, key", i, msg.key);
+            if (msg.key == key) {
+                console.log("*** bingo");
+                this.messages.splice(i, 1);
+                lineRemover(msg);
+                return;
+            }
+        }
+        console.log("key not found", key);
     }
 
     // and return the response
@@ -468,7 +475,13 @@ function lineHandler(msg) {
     let id = keyToId(key);
     console.log("id", id);
     //content = content.replace(/\n/g, "<br>\n");
-    $("#chatlog").append(`<p id="${id}"><i>${name}:</i> ${content}</p>\n`);
+    let jqElem = $("#chatlog").append(`<p id="${id}"><i>${name}:</i> ${content}</p>\n`);
+    jqElem = $("#" + id);
+    jqElem.click(() => {
+    //$("#" + id).click(() => {
+        console.log("click", key, id);
+        jqElem.css("background-color", "yellow");
+    });
 }
 
 
