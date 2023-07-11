@@ -82,13 +82,21 @@ class FBStorage extends Storage {
         this.chatRef = db.ref(`/chats/${this.space}`);
     }
 
-    async registerMessageWatcher(watcher) {
+    async registerMessageWatcher(watcher, removeWatcher) {
         console.log("FBStorage.registerMessageWatcher", this.db);
         let ref = await this.db.ref(`/chats/${this.space}/messages`);
         this.watcher = watcher;
         ref.on('child_added', (snapshot) => {
             let msg = snapshot.val();
+            msg.key = snapshot.key;
             watcher(msg);
+        });
+        ref.on('child_changed', (snapshot) => {
+            console.log("child_changed", snapshot);
+        });
+        ref.on('child_removed', (snapshot) => {
+            console.log("child_removed", snapshot);
+            removeWatcher(snapshot);
         });
     }
 
@@ -103,6 +111,11 @@ class FBStorage extends Storage {
     async save(obj) {
         console.log("FBStorage save", obj);
         await this.chatRef.set(obj);
+    }
+
+    async remove(key) {
+        console.log("FBStorage remove", key);
+        await this.db.ref(`/chats/${this.space}/messages/${key}`).remove();
     }
 
     async appendMessage(msg) {
@@ -172,6 +185,17 @@ class ChatTool {
         }
     }
 
+    async undo() {
+        console.log("ChatTool.undo");
+        // get the last message
+        let n = this.messages.length;
+        if (n == 0) {
+            return;
+        }
+        let lastMsg = this.messages[n - 1];
+        await this.store.remove(lastMsg.key);
+    }
+
     async appendLine(msg) {
         console.log("ChatTool.appendLine", msg);
         //this.messages.push(msg);
@@ -191,10 +215,28 @@ class ChatTool {
         this.db = db;
         this.store = new FBStorage(db, this.space);
         this.store.registerMessageWatcher(msg => {
-            console.log("myLineWatcher", msg);
-            this.messages.push(msg);
-            inst.lineWatcher(msg);
-        });
+                        console.log("myLineWatcher", msg);
+                        this.messages.push(msg);
+                        inst.lineWatcher(msg);
+                    },
+                    snap => {
+                        console.log("remove Watcher", snap);
+                        let key = snap.key;
+                        console.log("key", key);
+                        // remove msg from messages with key
+                        for (let i = 0; i < this.messages.length; i++) {
+                            let msg = this.messages[i];
+                            console.log("i, key", i, msg.key);
+                            if (msg.key == key) {
+                                console.log("*** bingo");
+                                this.messages.splice(i, 1);
+                                lineRemover(msg);
+                                return;
+                            }
+                        }
+                        console.log("key not found", key);
+                    }
+        );
         console.log("initFirebaseDB getting chatObj from store");
         let chatObj = await this.store.load();
         if (chatObj == null) {
@@ -375,6 +417,10 @@ async function clearChat() {
     chatTool.clearChat();
 }
 
+async function handleUndo() {
+    console.log("handleUndo");
+    chatTool.undo();
+}
 
 // get input text user has typed, send it to openai
 // display response and save response in local storage.
@@ -391,7 +437,12 @@ async function handleUserInput() {
     await chatTool.handleUserInput(text, userName);
 }
 
-
+// convert a firebase key to an id.  The keys
+// seem to start with - which is not allowed, the
+// remaining characters are ok.
+function keyToId(key) {
+    return key.substring(1);
+}
 
 // this gets called each time there is a new line message
 // and displays it on the log.
@@ -413,8 +464,20 @@ function lineHandler(msg) {
         name = firstName(name);
     }
     let content = msg.content;
+    let key = msg.key;
+    let id = keyToId(key);
+    console.log("id", id);
     //content = content.replace(/\n/g, "<br>\n");
-    $("#chatlog").append(`<p><i>${name}:</i> ${content}</p>\n`);
+    $("#chatlog").append(`<p id="${id}"><i>${name}:</i> ${content}</p>\n`);
+}
+
+
+function lineRemover(msg) {
+    console.log("lineRemover", msg, msg.key);
+    let key = msg.key;
+    let id = keyToId(key);
+    console.log("id", id);
+    $("#" + id).remove();
 }
 
 async function setAutoReply() {
